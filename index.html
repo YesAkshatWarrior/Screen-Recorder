@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Screen Recorder with Audio Options</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            padding: 20px;
+            background: url('background.jpg') no-repeat center center fixed;
+            background-size: cover;
+            color: #fff;
+            margin: 0;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        h1 {
+            margin-bottom: 20px;
+            color: #ffcc00;
+            font-size: 2.5em;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.7);
+        }
+
+        .controls {
+            background: rgba(0, 0, 0, 0.8);
+            border-radius: 15px;
+            padding: 20px;
+            display: inline-block;
+            box-shadow: 0 0 15px rgba(0, 0, 0, 0.6);
+            margin-bottom: 20px;
+        }
+
+        button, label, select {
+            margin: 10px;
+            padding: 10px 20px;
+            font-size: 16px;
+            border: none;
+            border-radius: 8px;
+            background-color: #007bff;
+            color: #fff;
+            cursor: pointer;
+            transition: background-color 0.3s, transform 0.2s;
+        }
+
+        button:disabled {
+            background-color: #6c757d;
+            cursor: not-allowed;
+        }
+
+        button:hover:not(:disabled) {
+            background-color: #0056b3;
+            transform: scale(1.05);
+        }
+
+        select {
+            background-color: #004d99;
+            border: none;
+            color: #fff;
+            border-radius: 8px;
+            font-size: 16px;
+            padding: 10px 15px;
+            cursor: pointer;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        select::after {
+            content: '▼';
+            position: absolute;
+            right: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 14px;
+            color: #fff;
+            pointer-events: none;
+        }
+
+        select:focus {
+            outline: none;
+            background-color: #003d7a;
+        }
+
+        option {
+            background-color: #004d99;
+            color: #fff;
+            padding: 10px;
+        }
+
+        #recordedVideo {
+            width: 80%;
+            max-width: 1200px;
+            height: auto;
+            margin-top: 20px;
+            border: 4px solid #007bff;
+            border-radius: 15px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+        }
+
+        #downloadLink {
+            display: inline-block;
+            margin-top: 20px;
+            padding: 10px 20px;
+            background-color: #28a745;
+            color: #fff;
+            text-decoration: none;
+            border-radius: 8px;
+            transition: background-color 0.3s, transform 0.2s;
+        }
+
+        #downloadLink:hover {
+            background-color: #218838;
+            transform: scale(1.05);
+        }
+    </style>
+</head>
+<body>
+    <div>
+        <h1>Screen Recorder with Audio Options</h1>
+        <div class="controls">
+            <label>
+                FPS:
+                <select id="fpsSelect">
+                    <option value="120">120 FPS</option>
+                    <option value="60" selected>60 FPS</option>
+                    <option value="30">30 FPS</option>
+                </select>
+            </label>
+            <label>
+                <input type="checkbox" id="microphoneToggle">
+                Record Microphone
+            </label>
+            <label>
+                <input type="checkbox" id="systemSoundToggle" disabled>
+                Record System Sound (Currently Disabled)
+            </label>
+            <button id="startRecording">Start Recording</button>
+            <button id="stopRecording" disabled>Stop Recording</button>
+        </div>
+        <video id="recordedVideo" controls></video>
+        <a id="downloadLink" style="display:none;">Download WebM</a>
+    </div>
+
+    <script>
+        const startButton = document.getElementById('startRecording');
+        const stopButton = document.getElementById('stopRecording');
+        const videoElement = document.getElementById('recordedVideo');
+        const downloadLink = document.getElementById('downloadLink');
+        const fpsSelect = document.getElementById('fpsSelect');
+        const microphoneToggle = document.getElementById('microphoneToggle');
+        const canvas = document.getElementById('canvas');
+
+        let mediaRecorder;
+        let recordedChunks = [];
+        let displayStream, microphoneStream;
+
+        async function startRecording() {
+            const fps = parseInt(fpsSelect.value, 10);
+
+            try {
+                // Capture display stream
+                displayStream = await navigator.mediaDevices.getDisplayMedia({ 
+                    video: { frameRate: fps }
+                });
+
+                let combinedStream = displayStream;
+
+                if (microphoneToggle.checked) {
+                    try {
+                        // Capture microphone stream
+                        microphoneStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                        combinedStream = new MediaStream([...displayStream.getVideoTracks(), ...microphoneStream.getAudioTracks()]);
+                    } catch (error) {
+                        console.error('Error accessing microphone:', error);
+                        alert('Unable to access microphone: ' + error.message);
+                        return;
+                    }
+                }
+
+                mediaRecorder = new MediaRecorder(combinedStream, {
+                    videoBitsPerSecond: 2500000,
+                    mimeType: 'video/webm; codecs=vp9'
+                });
+
+                mediaRecorder.ondataavailable = event => {
+                    if (event.data.size > 0) {
+                        recordedChunks.push(event.data);
+                    }
+                };
+
+                mediaRecorder.onstop = () => {
+                    const blob = new Blob(recordedChunks, { type: 'video/webm' });
+                    recordedChunks = [];
+                    const url = URL.createObjectURL(blob);
+
+                    // Set video and download link
+                    videoElement.srcObject = null;
+                    videoElement.src = url;
+                    videoElement.controls = true;
+                    videoElement.play();
+
+                    downloadLink.href = url;
+                    downloadLink.download = 'recording.webm';
+                    downloadLink.style.display = 'block';
+                    downloadLink.textContent = 'Download WebM';
+
+                    // Stop all streams
+                    displayStream.getTracks().forEach(track => track.stop());
+                    if (microphoneStream) {
+                        microphoneStream.getTracks().forEach(track => track.stop());
+                    }
+                };
+
+                // Start recording
+                mediaRecorder.start();
+                startButton.disabled = true;
+                stopButton.disabled = false;
+            } catch (error) {
+                console.error('Error starting recording:', error);
+                alert('An error occurred while starting the recording.');
+                startButton.disabled = false;
+                stopButton.disabled = true;
+            }
+        }
+
+        startButton.addEventListener('click', startRecording);
+        stopButton.addEventListener('click', () => {
+            mediaRecorder.stop();
+            startButton.disabled = false;
+            stopButton.disabled = true;
+        });
+    </script>
+</body>
+</html>
